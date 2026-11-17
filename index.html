@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Brake Meter">
+<title>Brake Meter</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; background: #000; color: #f5f5f7; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .wrap { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 14px; padding: 12px 0 28px; }
+  header { text-align: center; }
+  h1 { margin: 6px 0 2px; font-size: 26px; letter-spacing: 4px; font-weight: 800; }
+  #status { font-size: 15px; color: #a1a1aa; min-height: 20px; }
+  #status.warn { color: #ffd60a; }
+  #status.ok { color: #30d158; }
+
+  .meter { text-align: center; background: #0b0b0f; border: 1px solid #1f1f23; border-radius: 20px; padding: 18px 16px 20px; }
+  .meter .label { font-size: 15px; letter-spacing: 3px; color: #a1a1aa; font-weight: 700; }
+  #decel { font-size: clamp(96px, 26vw, 168px); line-height: 1.05; font-weight: 800; font-variant-numeric: tabular-nums; }
+  #decel.over { color: #ff453a; }
+  .unit { font-size: 22px; color: #a1a1aa; margin-top: -6px; }
+  .bar-wrap { position: relative; height: 26px; background: #1c1c1e; border-radius: 13px; margin: 16px 4px 6px; overflow: hidden; }
+  #bar { height: 100%; width: 0%; border-radius: 13px; background: #30d158; transition: width 60ms linear, background-color 120ms linear; }
+  #bar.warn { background: #ffd60a; }
+  #bar.over { background: #ff453a; }
+  #threshMark { position: absolute; top: 0; bottom: 0; width: 3px; background: #fff; opacity: .85; left: 37.5%; }
+  .bar-scale { display: flex; justify-content: space-between; font-size: 12px; color: #71717a; padding: 0 6px; }
+  .sub { display: flex; justify-content: space-around; margin-top: 14px; font-size: 17px; color: #a1a1aa; }
+  .sub b { color: #f5f5f7; font-variant-numeric: tabular-nums; }
+
+  .controls { display: flex; gap: 10px; }
+  button {
+    font-family: inherit; border: none; border-radius: 16px; cursor: pointer;
+    color: #fff; background: #1c1c1e; font-weight: 700;
+  }
+  button:active { transform: scale(.97); }
+  button:disabled { opacity: .35; }
+  #startBtn { flex: 2; min-height: 76px; font-size: 26px; background: #30d158; color: #000; }
+  #startBtn.running { background: #ff453a; color: #fff; }
+  #calBtn, #flipBtn { flex: 1; min-height: 76px; font-size: 18px; }
+  #resetBtn { width: 100%; min-height: 56px; font-size: 18px; background: #26262b; }
+
+  .settings { background: #0b0b0f; border: 1px solid #1f1f23; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .settings label { font-size: 17px; font-weight: 600; display: flex; flex-direction: column; gap: 8px; }
+  .settings .row { display: flex; justify-content: space-between; align-items: baseline; }
+  #threshVal { color: #30d158; font-variant-numeric: tabular-nums; }
+  select {
+    font-family: inherit; font-size: 18px; color: #f5f5f7; background: #1c1c1e;
+    border: 1px solid #3a3a3f; border-radius: 12px; padding: 12px; width: 100%;
+  }
+  input[type="range"] { width: 100%; height: 34px; accent-color: #30d158; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .stat { background: #0b0b0f; border: 1px solid #1f1f23; border-radius: 16px; padding: 14px 8px; text-align: center; }
+  .stat-num { display: block; font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .stat-num.red { color: #ff453a; }
+  .stat-label { display: block; font-size: 13px; color: #a1a1aa; margin-top: 2px; line-height: 1.25; }
+
+  .log { background: #0b0b0f; border: 1px solid #1f1f23; border-radius: 20px; padding: 16px; }
+  .log h2 { margin: 0 0 10px; font-size: 17px; letter-spacing: 1px; }
+  #logList { list-style: none; margin: 0; padding: 0; font-size: 16px; }
+  #logList li { display: flex; justify-content: space-between; gap: 10px; padding: 9px 2px; border-top: 1px solid #1f1f23; font-variant-numeric: tabular-nums; }
+  #logList li:first-child { border-top: none; }
+  #logList li.empty { color: #71717a; justify-content: center; }
+  #logList .t { color: #a1a1aa; }
+  #logList .brake { color: #ff453a; font-weight: 700; }
+  #logList .accel { color: #30d158; font-weight: 700; }
+  #logList .turn { color: #ffd60a; font-weight: 700; }
+
+  .help, .privacy { font-size: 14px; line-height: 1.55; color: #a1a1aa; margin: 0; }
+  .help b { color: #f5f5f7; }
+
+  #flash {
+    position: fixed; inset: 0; background: #ff0000; opacity: 0;
+    pointer-events: none; z-index: 50; transition: opacity .9s ease-out;
+  }
+  #flash.on { opacity: .55; transition: opacity 60ms linear; }
+
+  @media (max-height: 520px) and (orientation: landscape) {
+    #decel { font-size: clamp(64px, 16vh, 110px); }
+    #startBtn, #calBtn, #flipBtn { min-height: 56px; }
+    .wrap { gap: 10px; }
+  }
+</style>
+</head>
+<body>
+<div id="flash"></div>
+<div class="wrap">
+  <header>
+    <h1>BRAKE METER</h1>
+    <div id="status">Tap Start, then Calibrate while stopped.</div>
+  </header>
+
+  <section class="meter">
+    <div class="label">DECELERATION</div>
+    <div id="decel">0.00</div>
+    <div class="unit">g</div>
+    <div class="bar-wrap">
+      <div id="bar"></div>
+      <div id="threshMark"></div>
+    </div>
+    <div class="bar-scale"><span>0</span><span>0.4 g</span><span>0.8 g</span></div>
+    <div class="sub">
+      <span>Accel <b id="accelVal">+0.00 g</b></span>
+      <span>Turn <b id="turnVal">0.00 g</b></span>
+      <span>Direction <b id="dirVal">—</b></span>
+    </div>
+  </section>
+
+  <section class="controls">
+    <button id="startBtn" type="button">▶&nbsp; Start</button>
+    <button id="calBtn" type="button" disabled>Calibrate</button>
+    <button id="flipBtn" type="button" disabled>Flip ↕</button>
+  </section>
+
+  <section class="settings">
+    <label>
+      <span class="row"><span>Phone mount</span></span>
+      <select id="mountSel">
+        <option value="auto" selected>Auto — detect from first move</option>
+        <option value="portrait">Portrait</option>
+        <option value="landscape">Landscape</option>
+      </select>
+    </label>
+    <label>
+      <span class="row"><span>Harsh threshold</span><span id="threshVal">0.30 g</span></span>
+      <input type="range" id="thresh" min="0.10" max="0.60" step="0.01" value="0.30">
+    </label>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><span class="stat-num red" id="brakeCount">0</span><span class="stat-label">Harsh braking</span></div>
+    <div class="stat"><span class="stat-num" id="strongest">0.00 g</span><span class="stat-label">Strongest braking</span></div>
+    <div class="stat"><span class="stat-num" id="tripTime">00:00</span><span class="stat-label">Trip time</span></div>
+    <div class="stat"><span class="stat-num" id="accelCount">0</span><span class="stat-label">Harsh accel</span></div>
+    <div class="stat"><span class="stat-num" id="turnCount">0</span><span class="stat-label">Sharp turns</span></div>
+    <div class="stat"><span class="stat-num" id="eventCount">0</span><span class="stat-label">Events logged</span></div>
+  </section>
+
+  <button id="resetBtn" type="button">Reset trip</button>
+
+  <section class="log">
+    <h2>RECENT EVENTS</h2>
+    <ul id="logList"><li class="empty">No events yet</li></ul>
+  </section>
+
+  <p class="help"><b>How to use:</b> mount the phone firmly on the dashboard, screen facing you. Tap Start, allow motion access, then tap Calibrate while the car is stopped or cruising steadily. In Auto mode the forward direction is set from your first clear pull-away — if that first move was actually a brake, tap Flip ↕. In Portrait / Landscape mode the direction is set from the mount itself. Keep the phone still in its mount while driving.</p>
+  <p class="privacy">Privacy: everything is measured and stored on this phone only. No network requests, no accounts, no tracking.</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var G = 9.80665;            // m/s^2 in one g
+  var BAR_MAX_G = 0.8;        // bar gauge full scale
+  var AUTO_SET_G = 0.12;      // horizontal g that counts as a "clear move" for auto direction
+  var AUTO_SET_MS = 300;      // how long that move must be sustained
+  var COOLDOWN_MS = 3000;     // one event per type at most every 3 s
+  var SMOOTH_N = 5;           // moving-average window (samples)
+  var LOG_MAX = 20;
+  var LS_THRESH = "brakeMeter.threshold";
+  var LS_LOG = "brakeMeter.log";
+  var LS_MOUNT = "brakeMeter.mount";
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  var statusEl = $("status"), decelEl = $("decel"), barEl = $("bar"),
+      threshMarkEl = $("threshMark"), accelEl = $("accelVal"), turnEl = $("turnVal"),
+      dirEl = $("dirVal"), startBtn = $("startBtn"), calBtn = $("calBtn"),
+      flipBtn = $("flipBtn"), resetBtn = $("resetBtn"), mountSel = $("mountSel"),
+      threshInput = $("thresh"), threshValEl = $("threshVal"),
+      brakeCountEl = $("brakeCount"), strongestEl = $("strongest"),
+      tripTimeEl = $("tripTime"), accelCountEl = $("accelCount"),
+      turnCountEl = $("turnCount"), eventCountEl = $("eventCount"),
+      logListEl = $("logList"), flashEl = $("flash");
+
+  var running = false;
+  var calibrated = false;
+  var calibrating = false;
+  var calSamples = [];
+  var calUntil = 0;
+  var g0 = null;              // calibrated gravity vector [x, y, z] (m/s^2, points "up")
+  var up = [0, 0, 1];         // unit vector pointing up in device coordinates
+  var forward = null;         // unit forward vector in device coordinates
+  var lateral = null;         // unit lateral vector (up x forward)
+  var mount = "auto";
+  var threshold = 0.30;
+
+  var buffer = [];            // smoothed accelerationIncludingGravity samples
+  var autoAccum = null;       // {vx, vy, vz, since} while a candidate first move builds
+  var lastUi = 0;
+  var curDecel = 0, curAccel = 0, curTurn = 0;
+
+  var brakeCount = 0, accelCount = 0, turnCount = 0;
+  var strongest = 0;
+  var startTime = null;
+  var lastBrake = 0, lastAccel = 0, lastTurn = 0;
+  var log = [];
+  var wakeLock = null;
+  var timerId = null;
+
+  // ---------- helpers ----------
+  function vecLen(v) { return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); }
+  function norm(v) {
+    var l = vecLen(v) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
+  }
+  function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+  function cross(a, b) {
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  }
+  function horiz(v) { // component of v perpendicular to "up" (i.e. horizontal)
+    var d = dot(v, up);
+    return [v[0] - up[0] * d, v[1] - up[1] * d, v[2] - up[2] * d];
+  }
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg;
+    statusEl.className = kind || "";
+  }
+  function fmtClock(ts) {
+    var d = new Date(ts);
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+  function fmtTrip(ms) {
+    var s = Math.floor(ms / 1000);
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return h > 0 ? p(h) + ":" + p(m) + ":" + p(sec) : p(m) + ":" + p(sec);
+  }
+
+  // ---------- persistence ----------
+  function loadPersisted() {
+    try {
+      var t = parseFloat(localStorage.getItem(LS_THRESH));
+      if (isFinite(t) && t >= 0.10 && t <= 0.60) threshold = t;
+      var m = localStorage.getItem(LS_MOUNT);
+      if (m === "auto" || m === "portrait" || m === "landscape") mount = m;
+      var l = JSON.parse(localStorage.getItem(LS_LOG) || "[]");
+      if (Array.isArray(l)) log = l.slice(0, LOG_MAX);
+    } catch (e) { /* storage unavailable: keep defaults */ }
+  }
+  function saveThreshold() { try { localStorage.setItem(LS_THRESH, String(threshold)); } catch (e) {} }
+  function saveLog() { try { localStorage.setItem(LS_LOG, JSON.stringify(log)); } catch (e) {} }
+  function saveMount() { try { localStorage.setItem(LS_MOUNT, mount); } catch (e) {} }
+
+  // ---------- direction ----------
+  function setForward(f) {
+    if (vecLen(f) < 0.2) return false;
+    forward = norm(f);
+    lateral = norm(cross(up, forward));
+    dirEl.textContent = "set ✓";
+    return true;
+  }
+  function geometricForward() {
+    // Phone upright (screen roughly vertical): forward is out the back of the
+    // phone, toward the windshield = horizontal projection of -z.
+    var fz = horiz([0, 0, -1]);
+    if (vecLen(fz) > 0.3) return norm(fz);
+    // Phone lying flat (screen up): use the top edge as forward.
+    var axis = mount === "landscape" ? [1, 0, 0] : [0, 1, 0];
+    var fa = horiz(axis);
+    return vecLen(fa) > 0.2 ? norm(fa) : null;
+  }
+  function resolveDirectionAfterCalibrate() {
+    if (mount === "auto") {
+      forward = null; lateral = null;
+      dirEl.textContent = "waiting…";
+      setStatus("Calibrated. Waiting for your first clear move to set direction.", "ok");
+    } else {
+      var f = geometricForward();
+      if (f && setForward(f)) {
+        setStatus("Calibrated. Direction set from " + mount + " mount.", "ok");
+      } else {
+        forward = null;
+        setStatus("Calibrated, but the mount angle is unclear — try Auto mode.", "warn");
+      }
+    }
+  }
+
+  // ---------- motion ----------
+  function onMotion(e) {
+    if (!running) return;
+    var a = e.accelerationIncludingGravity;
+    if (!a || a.x == null) return;
+    var s = [a.x, a.y, a.z];
+
+    if (calibrating) {
+      calSamples.push(s);
+      if (Date.now() >= calUntil || calSamples.length >= 40) finishCalibrate();
+      return;
+    }
+    if (!calibrated) return;
+
+    buffer.push(s);
+    if (buffer.length > SMOOTH_N) buffer.shift();
+    var avg = [0, 0, 0];
+    for (var i = 0; i < buffer.length; i++) {
+      avg[0] += buffer[i][0]; avg[1] += buffer[i][1]; avg[2] += buffer[i][2];
+    }
+    avg[0] /= buffer.length; avg[1] /= buffer.length; avg[2] /= buffer.length;
+    processSample(avg);
+  }
+
+  function processSample(a) {
+    // Dynamic acceleration = measured minus calibrated gravity.
+    var dyn = [a[0] - g0[0], a[1] - g0[1], a[2] - g0[2]];
+    var ah = horiz(dyn);                 // horizontal part only
+    var ahG = vecLen(ah) / G;
+
+    if (!forward) {
+      // Auto mode: learn the forward axis from the first sustained clear move,
+      // assuming it is a pull-away (acceleration). If it was a brake, Flip fixes it.
+      if (mount === "auto" && ahG > AUTO_SET_G) {
+        var now = Date.now();
+        if (!autoAccum) autoAccum = { x: 0, y: 0, z: 0, since: now };
+        autoAccum.x += ah[0]; autoAccum.y += ah[1]; autoAccum.z += ah[2];
+        if (now - autoAccum.since >= AUTO_SET_MS) {
+          if (setForward([autoAccum.x, autoAccum.y, autoAccum.z])) {
+            setStatus("Direction set. Measuring braking now.", "ok");
+          }
+          autoAccum = null;
+        }
+      } else {
+        autoAccum = null;
+      }
+      curDecel = 0; curAccel = 0; curTurn = 0;
+      return;
+    }
+
+    var fG = dot(ah, forward) / G;       // + = accelerating forward
+    var lG = lateral ? dot(ah, lateral) / G : 0;
+    var decel = Math.max(0, -fG);
+    curDecel = decel;
+    curAccel = Math.max(0, fG);
+    curTurn = Math.abs(lG);
+
+    var nowMs = Date.now();
+    if (decel > threshold && nowMs - lastBrake > COOLDOWN_MS) {
+      lastBrake = nowMs;
+      brakeCount++;
+      if (decel > strongest) strongest = decel;
+      addEvent("brake", decel);
+      flash();
+      vibrate();
+    }
+    if (fG > threshold && nowMs - lastAccel > COOLDOWN_MS) {
+      lastAccel = nowMs;
+      accelCount++;
+      addEvent("accel", fG);
+    }
+    if (Math.abs(lG) > threshold && nowMs - lastTurn > COOLDOWN_MS) {
+      lastTurn = nowMs;
+      turnCount++;
+      addEvent("turn", Math.abs(lG));
+    }
+    updateStats();
+  }
+
+  // ---------- events / feedback ----------
+  function addEvent(type, g) {
+    log.unshift({ t: Date.now(), type: type, g: Math.round(g * 100) / 100 });
+    if (log.length > LOG_MAX) log.length = LOG_MAX;
+    saveLog();
+    renderLog();
+  }
+  function flash() {
+    flashEl.classList.add("on");
+    setTimeout(function () { flashEl.classList.remove("on"); }, 1000);
+  }
+  function vibrate() {
+    try { if ("vibrate" in navigator) navigator.vibrate(200); } catch (e) {}
+  }
+
+  // ---------- UI ----------
+  function updateStats() {
+    brakeCountEl.textContent = brakeCount;
+    accelCountEl.textContent = accelCount;
+    turnCountEl.textContent = turnCount;
+    eventCountEl.textContent = log.length;
+    strongestEl.textContent = strongest.toFixed(2) + " g";
+  }
+  function renderLog() {
+    var labels = { brake: "Harsh braking", accel: "Harsh accel", turn: "Sharp turn" };
+    if (!log.length) {
+      logListEl.innerHTML = '<li class="empty">No events yet</li>';
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < log.length; i++) {
+      var ev = log[i];
+      html += '<li><span class="t">' + fmtClock(ev.t) + '</span>' +
+        '<span class="' + ev.type + '">' + (labels[ev.type] || ev.type) + '</span>' +
+        '<span>' + ev.g.toFixed(2) + ' g</span></li>';
+    }
+    logListEl.innerHTML = html;
+    eventCountEl.textContent = log.length;
+  }
+  function updateMeter() {
+    decelEl.textContent = curDecel.toFixed(2);
+    decelEl.className = curDecel > threshold ? "over" : "";
+    var pct = Math.min(curDecel / BAR_MAX_G, 1) * 100;
+    barEl.style.width = pct + "%";
+    barEl.className = curDecel > threshold ? "over" : (curDecel > threshold * 0.7 ? "warn" : "");
+    accelEl.textContent = "+" + curAccel.toFixed(2) + " g";
+    turnEl.textContent = curTurn.toFixed(2) + " g";
+    if (startTime != null) tripTimeEl.textContent = fmtTrip(Date.now() - startTime);
+  }
+  function loop() {
+    if (!running) return;
+    var now = performance.now();
+    if (now - lastUi >= 33) { updateMeter(); lastUi = now; }
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- wake lock ----------
+  function requestWakeLock() {
+    try {
+      if ("wakeLock" in navigator && navigator.wakeLock.request) {
+        navigator.wakeLock.request("screen").then(function (lock) {
+          wakeLock = lock;
+        }).catch(function () { wakeLock = null; });
+      }
+    } catch (e) { wakeLock = null; }
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (running && document.visibilityState === "visible" && !wakeLock) requestWakeLock();
+  });
+
+  // ---------- calibration ----------
+  function startCalibrate() {
+    if (!running) { setStatus("Tap Start first, then Calibrate while stopped.", "warn"); return; }
+    calibrating = true;
+    calSamples = [];
+    calUntil = Date.now() + 500;
+    setStatus("Calibrating… hold the phone still.", "warn");
+  }
+  function finishCalibrate() {
+    calibrating = false;
+    if (calSamples.length < 5) {
+      setStatus("Calibration failed — hold still and try again.", "warn");
+      return;
+    }
+    var sum = [0, 0, 0];
+    for (var i = 0; i < calSamples.length; i++) {
+      sum[0] += calSamples[i][0]; sum[1] += calSamples[i][1]; sum[2] += calSamples[i][2];
+    }
+    g0 = [sum[0] / calSamples.length, sum[1] / calSamples.length, sum[2] / calSamples.length];
+    up = norm(g0);
+    calibrated = true;
+    buffer = [];
+    autoAccum = null;
+    resolveDirectionAfterCalibrate();
+  }
+
+  // ---------- start / stop ----------
+  function start() {
+    if (typeof DeviceMotionEvent === "undefined") {
+      setStatus("Motion sensors are not available in this browser.", "warn");
+      return;
+    }
+    function begin() {
+      running = true;
+      if (startTime == null) startTime = Date.now();
+      window.addEventListener("devicemotion", onMotion);
+      requestWakeLock();
+      startBtn.textContent = "■  Stop";
+      startBtn.classList.add("running");
+      calBtn.disabled = false;
+      flipBtn.disabled = false;
+      setStatus(calibrated ? "Running. Measuring braking." : "Running. Tap Calibrate while stopped.", "ok");
+      lastUi = 0;
+      requestAnimationFrame(loop);
+    }
+    if (typeof DeviceMotionEvent.requestPermission === "function") {
+      // iOS 13+: permission must be requested from a user gesture.
+      DeviceMotionEvent.requestPermission().then(function (state) {
+        if (state === "granted") begin();
+        else setStatus("Motion access was denied — allow it in Safari settings and try again.", "warn");
+      }).catch(function () {
+        setStatus("Could not request motion access. Try again.", "warn");
+      });
+    } else {
+      begin();
+    }
+  }
+  function stop() {
+    running = false;
+    window.removeEventListener("devicemotion", onMotion);
+    if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+    startBtn.innerHTML = "▶&nbsp; Start";
+    startBtn.classList.remove("running");
+    calBtn.disabled = true;
+    flipBtn.disabled = true;
+    curDecel = 0; curAccel = 0; curTurn = 0;
+    updateMeter();
+    setStatus("Stopped. Tap Start to run again.", "");
+  }
+
+  // ---------- wiring ----------
+  startBtn.addEventListener("click", function () { running ? stop() : start(); });
+  calBtn.addEventListener("click", startCalibrate);
+  flipBtn.addEventListener("click", function () {
+    if (!forward) { setStatus("No direction set yet — calibrate first.", "warn"); return; }
+    forward = [-forward[0], -forward[1], -forward[2]];
+    lateral = norm(cross(up, forward));
+    setStatus("Direction flipped.", "ok");
+  });
+  resetBtn.addEventListener("click", function () {
+    brakeCount = 0; accelCount = 0; turnCount = 0;
+    strongest = 0;
+    startTime = running ? Date.now() : null;
+    log = [];
+    saveLog();
+    renderLog();
+    updateStats();
+    tripTimeEl.textContent = "00:00";
+    setStatus(running ? "Trip reset. Measuring braking." : "Trip reset.", running ? "ok" : "");
+  });
+  threshInput.addEventListener("input", function () {
+    threshold = parseFloat(threshInput.value);
+    threshValEl.textContent = threshold.toFixed(2) + " g";
+    threshMarkEl.style.left = (threshold / BAR_MAX_G * 100) + "%";
+    saveThreshold();
+  });
+  mountSel.addEventListener("change", function () {
+    mount = mountSel.value;
+    saveMount();
+    if (calibrated) resolveDirectionAfterCalibrate();
+  });
+
+  // ---------- init ----------
+  loadPersisted();
+  threshInput.value = threshold.toFixed(2);
+  threshValEl.textContent = threshold.toFixed(2) + " g";
+  threshMarkEl.style.left = (threshold / BAR_MAX_G * 100) + "%";
+  mountSel.value = mount;
+  renderLog();
+  updateStats();
+})();
+</script>
+</body>
+</html>
