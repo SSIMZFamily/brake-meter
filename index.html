@@ -39,7 +39,7 @@
   #bar { height: 100%; width: 0%; border-radius: 13px; background: #30d158; transition: width 60ms linear, background-color 120ms linear; }
   #bar.warn { background: #ffd60a; }
   #bar.over { background: #ff453a; }
-  #threshMark { position: absolute; top: 0; bottom: 0; width: 3px; background: #fff; opacity: .85; left: 37.5%; }
+  #threshMark { position: absolute; top: 0; bottom: 0; width: 3px; background: #fff; opacity: .85; left: 40.8%; }
   .bar-scale { display: flex; justify-content: space-between; font-size: 12px; color: #71717a; padding: 0 6px; }
   .sub { display: flex; justify-content: space-around; margin-top: 14px; font-size: 17px; color: #a1a1aa; }
   .sub b { color: #f5f5f7; font-variant-numeric: tabular-nums; }
@@ -57,9 +57,13 @@
   #resetBtn { width: 100%; min-height: 56px; font-size: 18px; background: #26262b; }
 
   .settings { background: #0b0b0f; border: 1px solid #1f1f23; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .settings-head { display: flex; justify-content: space-between; align-items: center; }
+  .settings-head span { font-size: 17px; font-weight: 700; }
+  #uberResetBtn { min-height: 40px; padding: 0 14px; font-size: 14px; background: #26262b; border-radius: 12px; }
+  .settings-note { font-size: 14px; line-height: 1.5; color: #a1a1aa; margin: 0; }
   .settings label { font-size: 17px; font-weight: 600; display: flex; flex-direction: column; gap: 8px; }
   .settings .row { display: flex; justify-content: space-between; align-items: baseline; }
-  #threshVal { color: #30d158; font-variant-numeric: tabular-nums; }
+  .tval { color: #30d158; font-variant-numeric: tabular-nums; }
   select {
     font-family: inherit; font-size: 18px; color: #f5f5f7; background: #1c1c1e;
     border: 1px solid #3a3a3f; border-radius: 12px; padding: 12px; width: 100%;
@@ -130,6 +134,23 @@
   </section>
 
   <section class="settings">
+    <div class="settings-head">
+      <span>Uber standard (CMT)</span>
+      <button id="uberResetBtn" type="button">Reset to Uber</button>
+    </div>
+    <p class="settings-note">Uber counts an event only when it lasts at least 0.6&nbsp;s. Braking 0.33&nbsp;g · Accel 0.31&nbsp;g · Turns 0.43&nbsp;g. Brief bumps don’t count.</p>
+    <label>
+      <span class="row"><span>Harsh braking</span><span class="tval" id="threshBrakeVal">0.33 g</span></span>
+      <input type="range" id="threshBrake" min="0.10" max="0.60" step="0.01" value="0.33">
+    </label>
+    <label>
+      <span class="row"><span>Harsh acceleration</span><span class="tval" id="threshAccelVal">0.31 g</span></span>
+      <input type="range" id="threshAccel" min="0.10" max="0.60" step="0.01" value="0.31">
+    </label>
+    <label>
+      <span class="row"><span>Sharp turns</span><span class="tval" id="threshTurnVal">0.43 g</span></span>
+      <input type="range" id="threshTurn" min="0.10" max="0.60" step="0.01" value="0.43">
+    </label>
     <label>
       <span class="row"><span>Phone mount</span></span>
       <select id="mountSel">
@@ -137,10 +158,6 @@
         <option value="portrait">Portrait</option>
         <option value="landscape">Landscape</option>
       </select>
-    </label>
-    <label>
-      <span class="row"><span>Harsh threshold</span><span id="threshVal">0.30 g</span></span>
-      <input type="range" id="thresh" min="0.10" max="0.60" step="0.01" value="0.30">
     </label>
   </section>
 
@@ -160,7 +177,7 @@
     <ul id="logList"><li class="empty">No events yet</li></ul>
   </section>
 
-  <p class="help"><b>How to use:</b> mount the phone firmly on the dashboard, screen facing you. Tap Start, allow motion access, then tap Calibrate while the car is stopped or cruising steadily. In Auto mode the forward direction is set from your first clear pull-away — if that first move was actually a brake, tap Flip ↕. In Portrait / Landscape mode the direction is set from the mount itself. Keep the phone still in its mount while driving.</p>
+  <p class="help"><b>How to use:</b> mount the phone firmly on the dashboard, screen facing you. Tap Start, allow motion access, then tap Calibrate while the car is stopped or cruising steadily. In Auto mode the forward direction is set from your first clear pull-away — if that first move was actually a brake, tap Flip ↕. In Portrait / Landscape mode the direction is set from the mount itself. Keep the phone still in its mount while driving. <b>Drive to the Uber standard:</b> brake early and gently, build speed smoothly, and slow down before turns — if this meter stays quiet, Uber’s should too.</p>
   <p class="privacy">Privacy: everything is measured and stored on this phone only. No network requests, no accounts, no tracking.</p>
 </div>
 
@@ -173,11 +190,20 @@
   var AUTO_SET_G = 0.12;      // horizontal g that counts as a "clear move" for auto direction
   var AUTO_SET_MS = 300;      // how long that move must be sustained
   var COOLDOWN_MS = 3000;     // one event per type at most every 3 s
-  var SMOOTH_N = 5;           // moving-average window (samples)
+  var SUSTAIN_MS = 600;       // Uber/CMT: an event must last at least 0.6 s to count
+  var SMOOTH_N = 9;           // moving-average window (samples, ~150 ms at 60 Hz)
   var LOG_MAX = 20;
-  var LS_THRESH = "brakeMeter.threshold";
+  var LS_TB = "brakeMeter.threshBrake";
+  var LS_TA = "brakeMeter.threshAccel";
+  var LS_TT = "brakeMeter.threshTurn";
   var LS_LOG = "brakeMeter.log";
   var LS_MOUNT = "brakeMeter.mount";
+
+  // Uber's published CMT thresholds, converted from m/s^2:
+  // hard braking -3.2 m/s^2, harsh accel +3.0 m/s^2, sharp turn +/-4.2 m/s^2.
+  var UBER_BRAKE = 3.2 / G;   // 0.326 g
+  var UBER_ACCEL = 3.0 / G;   // 0.306 g
+  var UBER_TURN = 4.2 / G;    // 0.428 g
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -185,7 +211,11 @@
       threshMarkEl = $("threshMark"), accelEl = $("accelVal"), turnEl = $("turnVal"),
       dirEl = $("dirVal"), startBtn = $("startBtn"), calBtn = $("calBtn"),
       flipBtn = $("flipBtn"), resetBtn = $("resetBtn"), mountSel = $("mountSel"),
-      threshInput = $("thresh"), threshValEl = $("threshVal"),
+      uberResetBtn = $("uberResetBtn"),
+      threshBrakeInput = $("threshBrake"), threshAccelInput = $("threshAccel"),
+      threshTurnInput = $("threshTurn"),
+      threshBrakeValEl = $("threshBrakeVal"), threshAccelValEl = $("threshAccelVal"),
+      threshTurnValEl = $("threshTurnVal"),
       brakeCountEl = $("brakeCount"), strongestEl = $("strongest"),
       tripTimeEl = $("tripTime"), accelCountEl = $("accelCount"),
       turnCountEl = $("turnCount"), eventCountEl = $("eventCount"),
@@ -201,20 +231,25 @@
   var forward = null;         // unit forward vector in device coordinates
   var lateral = null;         // unit lateral vector (up x forward)
   var mount = "auto";
-  var threshold = 0.30;
+  var threshBrake = UBER_BRAKE;
+  var threshAccel = UBER_ACCEL;
+  var threshTurn = UBER_TURN;
 
   var buffer = [];            // smoothed accelerationIncludingGravity samples
-  var autoAccum = null;       // {vx, vy, vz, since} while a candidate first move builds
+  var autoAccum = null;       // {x, y, z, since} while a candidate first move builds
   var lastUi = 0;
   var curDecel = 0, curAccel = 0, curTurn = 0;
 
   var brakeCount = 0, accelCount = 0, turnCount = 0;
   var strongest = 0;
   var startTime = null;
-  var lastBrake = 0, lastAccel = 0, lastTurn = 0;
+  // Sustained-event tracking, one set per event type.
+  var aboveSince = { brake: 0, accel: 0, turn: 0 };  // when the value first went over threshold (0 = below)
+  var peak = { brake: 0, accel: 0, turn: 0 };        // strongest value seen during the current over-threshold episode
+  var armed = { brake: true, accel: true, turn: true }; // false after firing until the value drops back below threshold
+  var lastEvent = { brake: 0, accel: 0, turn: 0 };
   var log = [];
   var wakeLock = null;
-  var timerId = null;
 
   // ---------- helpers ----------
   function vecLen(v) { return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); }
@@ -249,15 +284,25 @@
   // ---------- persistence ----------
   function loadPersisted() {
     try {
-      var t = parseFloat(localStorage.getItem(LS_THRESH));
-      if (isFinite(t) && t >= 0.10 && t <= 0.60) threshold = t;
+      var tb = parseFloat(localStorage.getItem(LS_TB));
+      if (isFinite(tb) && tb >= 0.10 && tb <= 0.60) threshBrake = tb;
+      var ta = parseFloat(localStorage.getItem(LS_TA));
+      if (isFinite(ta) && ta >= 0.10 && ta <= 0.60) threshAccel = ta;
+      var tt = parseFloat(localStorage.getItem(LS_TT));
+      if (isFinite(tt) && tt >= 0.10 && tt <= 0.60) threshTurn = tt;
       var m = localStorage.getItem(LS_MOUNT);
       if (m === "auto" || m === "portrait" || m === "landscape") mount = m;
       var l = JSON.parse(localStorage.getItem(LS_LOG) || "[]");
       if (Array.isArray(l)) log = l.slice(0, LOG_MAX);
     } catch (e) { /* storage unavailable: keep defaults */ }
   }
-  function saveThreshold() { try { localStorage.setItem(LS_THRESH, String(threshold)); } catch (e) {} }
+  function saveThresholds() {
+    try {
+      localStorage.setItem(LS_TB, String(threshBrake));
+      localStorage.setItem(LS_TA, String(threshAccel));
+      localStorage.setItem(LS_TT, String(threshTurn));
+    } catch (e) {}
+  }
   function saveLog() { try { localStorage.setItem(LS_LOG, JSON.stringify(log)); } catch (e) {} }
   function saveMount() { try { localStorage.setItem(LS_MOUNT, mount); } catch (e) {} }
 
@@ -319,6 +364,26 @@
     processSample(avg);
   }
 
+  // Uber/CMT rule: an event counts only if the value stays above its threshold
+  // continuously for at least SUSTAIN_MS (0.6 s). One event per episode, and at
+  // most one per COOLDOWN_MS across episodes.
+  function checkSustained(type, value, threshold, nowMs, fire) {
+    if (value > threshold) {
+      if (!aboveSince[type]) { aboveSince[type] = nowMs; peak[type] = value; }
+      else if (value > peak[type]) peak[type] = value;
+      if (armed[type] && nowMs - aboveSince[type] >= SUSTAIN_MS &&
+          nowMs - lastEvent[type] > COOLDOWN_MS) {
+        lastEvent[type] = nowMs;
+        armed[type] = false;
+        fire(peak[type]);
+      }
+    } else {
+      aboveSince[type] = 0;
+      peak[type] = 0;
+      armed[type] = true;
+    }
+  }
+
   function processSample(a) {
     // Dynamic acceleration = measured minus calibrated gravity.
     var dyn = [a[0] - g0[0], a[1] - g0[1], a[2] - g0[2]];
@@ -353,24 +418,21 @@
     curTurn = Math.abs(lG);
 
     var nowMs = Date.now();
-    if (decel > threshold && nowMs - lastBrake > COOLDOWN_MS) {
-      lastBrake = nowMs;
+    checkSustained("brake", decel, threshBrake, nowMs, function (g) {
       brakeCount++;
-      if (decel > strongest) strongest = decel;
-      addEvent("brake", decel);
+      if (g > strongest) strongest = g;
+      addEvent("brake", g);
       flash();
       vibrate();
-    }
-    if (fG > threshold && nowMs - lastAccel > COOLDOWN_MS) {
-      lastAccel = nowMs;
+    });
+    checkSustained("accel", fG, threshAccel, nowMs, function (g) {
       accelCount++;
-      addEvent("accel", fG);
-    }
-    if (Math.abs(lG) > threshold && nowMs - lastTurn > COOLDOWN_MS) {
-      lastTurn = nowMs;
+      addEvent("accel", g);
+    });
+    checkSustained("turn", Math.abs(lG), threshTurn, nowMs, function (g) {
       turnCount++;
-      addEvent("turn", Math.abs(lG));
-    }
+      addEvent("turn", g);
+    });
     updateStats();
   }
 
@@ -415,10 +477,10 @@
   }
   function updateMeter() {
     decelEl.textContent = curDecel.toFixed(2);
-    decelEl.className = curDecel > threshold ? "over" : "";
+    decelEl.className = curDecel > threshBrake ? "over" : "";
     var pct = Math.min(curDecel / BAR_MAX_G, 1) * 100;
     barEl.style.width = pct + "%";
-    barEl.className = curDecel > threshold ? "over" : (curDecel > threshold * 0.7 ? "warn" : "");
+    barEl.className = curDecel > threshBrake ? "over" : (curDecel > threshBrake * 0.7 ? "warn" : "");
     accelEl.textContent = "+" + curAccel.toFixed(2) + " g";
     turnEl.textContent = curTurn.toFixed(2) + " g";
     if (startTime != null) tripTimeEl.textContent = fmtTrip(Date.now() - startTime);
@@ -428,6 +490,15 @@
     var now = performance.now();
     if (now - lastUi >= 33) { updateMeter(); lastUi = now; }
     requestAnimationFrame(loop);
+  }
+  function syncThresholdUi() {
+    threshBrakeInput.value = threshBrake.toFixed(2);
+    threshAccelInput.value = threshAccel.toFixed(2);
+    threshTurnInput.value = threshTurn.toFixed(2);
+    threshBrakeValEl.textContent = threshBrake.toFixed(2) + " g";
+    threshAccelValEl.textContent = threshAccel.toFixed(2) + " g";
+    threshTurnValEl.textContent = threshTurn.toFixed(2) + " g";
+    threshMarkEl.style.left = (threshBrake / BAR_MAX_G * 100) + "%";
   }
 
   // ---------- wake lock ----------
@@ -534,11 +605,29 @@
     tripTimeEl.textContent = "00:00";
     setStatus(running ? "Trip reset. Measuring braking." : "Trip reset.", running ? "ok" : "");
   });
-  threshInput.addEventListener("input", function () {
-    threshold = parseFloat(threshInput.value);
-    threshValEl.textContent = threshold.toFixed(2) + " g";
-    threshMarkEl.style.left = (threshold / BAR_MAX_G * 100) + "%";
-    saveThreshold();
+  threshBrakeInput.addEventListener("input", function () {
+    threshBrake = parseFloat(threshBrakeInput.value);
+    threshBrakeValEl.textContent = threshBrake.toFixed(2) + " g";
+    threshMarkEl.style.left = (threshBrake / BAR_MAX_G * 100) + "%";
+    saveThresholds();
+  });
+  threshAccelInput.addEventListener("input", function () {
+    threshAccel = parseFloat(threshAccelInput.value);
+    threshAccelValEl.textContent = threshAccel.toFixed(2) + " g";
+    saveThresholds();
+  });
+  threshTurnInput.addEventListener("input", function () {
+    threshTurn = parseFloat(threshTurnInput.value);
+    threshTurnValEl.textContent = threshTurn.toFixed(2) + " g";
+    saveThresholds();
+  });
+  uberResetBtn.addEventListener("click", function () {
+    threshBrake = UBER_BRAKE;
+    threshAccel = UBER_ACCEL;
+    threshTurn = UBER_TURN;
+    syncThresholdUi();
+    saveThresholds();
+    setStatus("Thresholds reset to the Uber standard.", "ok");
   });
   mountSel.addEventListener("change", function () {
     mount = mountSel.value;
@@ -548,10 +637,8 @@
 
   // ---------- init ----------
   loadPersisted();
-  threshInput.value = threshold.toFixed(2);
-  threshValEl.textContent = threshold.toFixed(2) + " g";
-  threshMarkEl.style.left = (threshold / BAR_MAX_G * 100) + "%";
   mountSel.value = mount;
+  syncThresholdUi();
   renderLog();
   updateStats();
 })();
