@@ -56,6 +56,11 @@
   #calBtn, #flipBtn { flex: 1; min-height: 76px; font-size: 18px; }
   #resetBtn { width: 100%; min-height: 56px; font-size: 18px; background: #26262b; }
 
+  .dirwarn {
+    background: #3a2b00; border: 1px solid #ffd60a; color: #ffd60a;
+    border-radius: 14px; padding: 12px 14px; font-size: 15px; line-height: 1.45;
+  }
+
   .settings { background: #0b0b0f; border: 1px solid #1f1f23; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
   .settings-head { display: flex; justify-content: space-between; align-items: center; }
   .settings-head span { font-size: 17px; font-weight: 700; }
@@ -80,6 +85,25 @@
   .stat-num.red { color: #ff453a; }
   .stat-label { display: block; font-size: 13px; color: #a1a1aa; margin-top: 2px; line-height: 1.25; }
 
+  .speedrow { background: #0b0b0f; border: 1px solid #1f1f23; border-radius: 20px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .speedmain { display: flex; align-items: center; gap: 16px; width: 100%; }
+  .speedbox { flex: 1; }
+  .speednum { font-size: 56px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .speednum .speedunit { font-size: 18px; color: #a1a1aa; font-weight: 600; margin-left: 6px; }
+  .speedsub { display: flex; gap: 16px; margin-top: 8px; font-size: 15px; color: #a1a1aa; }
+  .speedsub b { color: #f5f5f7; font-variant-numeric: tabular-nums; }
+  .speedsub2 { display: flex; justify-content: space-around; width: 100%; font-size: 15px; color: #a1a1aa; border-top: 1px solid #1f1f23; padding-top: 10px; }
+  .speedsub2 b { color: #f5f5f7; font-variant-numeric: tabular-nums; }
+  .compassbox { text-align: center; flex-shrink: 0; }
+  .compass { width: 64px; height: 64px; border: 2px solid #3a3a3f; border-radius: 50%; position: relative; margin: 0 auto; }
+  .needle {
+    position: absolute; inset: 0; display: flex; align-items: flex-start; justify-content: center;
+    font-size: 20px; line-height: 1; color: #30d158; padding-top: 3px; opacity: 0;
+    transition: transform .4s linear, opacity .3s linear;
+  }
+  .compasstext { font-size: 15px; margin-top: 4px; color: #a1a1aa; }
+  .compasstext b { font-size: 17px; color: #f5f5f7; }
+
   .log { background: #0b0b0f; border: 1px solid #1f1f23; border-radius: 20px; padding: 16px; }
   .log h2 { margin: 0 0 10px; font-size: 17px; letter-spacing: 1px; }
   .log h2 span { color: #a1a1aa; font-weight: 400; }
@@ -91,6 +115,23 @@
   #logList .brake { color: #ff453a; font-weight: 700; }
   #logList .accel { color: #30d158; font-weight: 700; }
   #logList .turn { color: #ffd60a; font-weight: 700; }
+
+  .today { background: #0b0b0f; border: 1px solid #1f1f23; border-radius: 20px; padding: 16px; }
+  .today h2 { margin: 0 0 12px; font-size: 17px; letter-spacing: 1px; }
+  .today h2 span { color: #a1a1aa; font-weight: 400; }
+  .today-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; text-align: center; }
+  .today-num { display: block; font-size: 23px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .today-label { display: block; font-size: 12px; color: #a1a1aa; margin-top: 2px; }
+
+  .trips { background: #0b0b0f; border: 1px solid #1f1f23; border-radius: 20px; padding: 16px; }
+  .trips-head { display: flex; justify-content: space-between; align-items: center; }
+  .trips-head h2 { margin: 0; font-size: 17px; letter-spacing: 1px; }
+  #clearTripsBtn { min-height: 32px; padding: 0 12px; font-size: 13px; background: #26262b; border-radius: 10px; }
+  #tripList { list-style: none; margin: 10px 0 0; padding: 0; font-size: 15px; }
+  #tripList li { padding: 10px 2px; border-top: 1px solid #1f1f23; }
+  #tripList li:first-child { border-top: none; }
+  #tripList li.empty { color: #71717a; text-align: center; }
+  #tripList .trip-sub { color: #a1a1aa; font-size: 14px; margin-top: 3px; line-height: 1.45; font-variant-numeric: tabular-nums; }
 
   .help, .privacy { font-size: 14px; line-height: 1.55; color: #a1a1aa; margin: 0; }
   .help b { color: #f5f5f7; }
@@ -113,14 +154,16 @@
 <div class="wrap">
   <header>
     <h1>BRAKE METER</h1>
-    <div id="status">Tap Start, then Calibrate while stopped.</div>
+    <div id="status">Tap Start Trip, then Calibrate while stopped.</div>
   </header>
 
   <section class="controls">
-    <button id="startBtn" type="button">▶&nbsp; Start</button>
+    <button id="startBtn" type="button">▶&nbsp; Start Trip</button>
     <button id="calBtn" type="button" disabled>Calibrate</button>
     <button id="flipBtn" type="button" disabled>Flip ↕</button>
   </section>
+
+  <div id="dirWarn" class="dirwarn" hidden></div>
 
   <section class="stats">
     <div class="stat hero"><span class="stat-num" id="incidentTotal">0</span><span class="stat-label">Incidents this trip</span></div>
@@ -131,12 +174,42 @@
     <div class="stat wide"><span class="stat-num" id="tripTime">00:00</span><span class="stat-label">Trip time</span></div>
   </section>
 
+  <section class="speedrow">
+    <div class="speedmain">
+      <div class="speedbox">
+        <div class="speednum"><span id="speedVal">—</span><span class="speedunit">mph</span></div>
+        <div class="speedsub"><span>Top <b id="topSpeed">—</b></span><span>Avg <b id="avgSpeed">—</b></span></div>
+      </div>
+      <div class="compassbox">
+        <div class="compass"><div class="needle" id="needle">▲</div></div>
+        <div class="compasstext"><b id="compassDir">—</b> <span id="compassDeg"></span></div>
+      </div>
+    </div>
+    <div class="speedsub2"><span>Distance <b id="tripDist">0.0 mi</b></span><span>Stops <b id="stopCount">0</b></span></div>
+  </section>
+
   <section class="log">
     <h2>RECENT EVENTS <span id="logCount"></span></h2>
     <ul id="logList"><li class="empty">No events yet</li></ul>
   </section>
 
   <button id="resetBtn" type="button">Reset trip</button>
+
+  <section class="today">
+    <h2>TODAY · <span id="todayDate"></span></h2>
+    <div class="today-grid">
+      <div><span class="today-num" id="todayTrips">0</span><span class="today-label">Trips</span></div>
+      <div><span class="today-num" id="todayDist">0.0</span><span class="today-label">Miles</span></div>
+      <div><span class="today-num" id="todayTime">00:00</span><span class="today-label">Driving</span></div>
+      <div><span class="today-num" id="todayIncidents">0</span><span class="today-label">Incidents</span></div>
+      <div><span class="today-num" id="todayStops">0</span><span class="today-label">Stops</span></div>
+    </div>
+  </section>
+
+  <section class="trips">
+    <div class="trips-head"><h2>TRIP HISTORY</h2><button id="clearTripsBtn" type="button">Clear</button></div>
+    <ul id="tripList"><li class="empty">No trips saved yet</li></ul>
+  </section>
 
   <section class="meter">
     <div class="label">DECELERATION</div>
@@ -182,8 +255,8 @@
     </label>
   </section>
 
-  <p class="help"><b>How to use:</b> mount the phone firmly on the dashboard, screen facing you. Tap Start, allow motion access, then tap Calibrate while the car is stopped or cruising steadily. In Auto mode the forward direction is set from your first clear pull-away — if that first move was actually a brake, tap Flip ↕. In Portrait / Landscape mode the direction is set from the mount itself. Keep the phone still in its mount while driving. <b>Drive to the Uber standard:</b> brake early and gently, build speed smoothly, and slow down before turns — if this meter stays quiet, Uber’s should too.</p>
-  <p class="privacy">Privacy: everything is measured and stored on this phone only. No network requests, no accounts, no tracking.</p>
+  <p class="help"><b>How to use:</b> mount the phone firmly on the dashboard, screen facing you. Tap Start Trip, allow motion and location access, then tap Calibrate while the car is stopped or cruising steadily. In Auto mode the forward direction is set from your first clear pull-away — if that first move was actually a brake, tap Flip ↕. The app also cross-checks the direction against GPS: if your speed is rising but the meter reads braking, it warns you the direction looks flipped. Tap End Trip when you're done and the trip saves to your history below; the Today card totals the whole day. <b>Background:</b> iPhone stops web apps when you switch to another app, so recording pauses while you're away and resumes when you come back — nothing is recorded in between. Keep the phone charging — GPS uses extra battery. <b>Drive to the Uber standard:</b> brake early and gently, build speed smoothly, and slow down before turns — if this meter stays quiet, Uber’s should too.</p>
+  <p class="privacy">Privacy: everything is measured and stored on this phone only — trips, speed and location never leave the device. No network requests, no accounts, no tracking.</p>
 </div>
 
 <script>
@@ -198,17 +271,33 @@
   var SUSTAIN_MS = 600;       // Uber/CMT: an event must last at least 0.6 s to count
   var SMOOTH_N = 9;           // moving-average window (samples, ~150 ms at 60 Hz)
   var LOG_MAX = 20;
+  var TRIPS_MAX = 30;
   var LS_TB = "brakeMeter.threshBrake";
   var LS_TA = "brakeMeter.threshAccel";
   var LS_TT = "brakeMeter.threshTurn";
   var LS_LOG = "brakeMeter.log";
   var LS_MOUNT = "brakeMeter.mount";
+  var LS_TRIPS = "brakeMeter.trips";
+  var LS_TRIPNUM = "brakeMeter.tripNum";
+
+  var MPH = 2.23694;          // m/s -> mph
+  var MI_PER_M = 1 / 1609.344;
+  var GPS_MIN_ACC = 50;       // metres; ignore fixes worse than this for distance
+  var STOP_MIN_MPH = 5;       // was moving above this...
+  var STOP_MAX_MPH = 1;       // ...then dropped below this = a stop
+  var STOP_COOLDOWN_MS = 15000;
+  var DIR_MIN_MPH = 10;       // only cross-check the direction above this speed
+  var DIR_DELTA_MPH = 4;      // GPS speed change over the window that counts
+  var DIR_WINDOW_MS = 6000;   // seconds of GPS speed history to compare
 
   // Uber's published CMT thresholds, converted from m/s^2:
   // hard braking -3.2 m/s^2, harsh accel +3.0 m/s^2, sharp turn +/-4.2 m/s^2.
   var UBER_BRAKE = 3.2 / G;   // 0.326 g
   var UBER_ACCEL = 3.0 / G;   // 0.306 g
   var UBER_TURN = 4.2 / G;    // 0.428 g
+
+  var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -225,7 +314,15 @@
       tripTimeEl = $("tripTime"), accelCountEl = $("accelCount"),
       turnCountEl = $("turnCount"), incidentTotalEl = $("incidentTotal"),
       logCountEl = $("logCount"),
-      logListEl = $("logList"), flashEl = $("flash");
+      logListEl = $("logList"), flashEl = $("flash"),
+      dirWarnEl = $("dirWarn"),
+      speedValEl = $("speedVal"), topSpeedEl = $("topSpeed"), avgSpeedEl = $("avgSpeed"),
+      tripDistEl = $("tripDist"), stopCountEl = $("stopCount"),
+      needleEl = $("needle"), compassDirEl = $("compassDir"), compassDegEl = $("compassDeg"),
+      todayDateEl = $("todayDate"), todayTripsEl = $("todayTrips"),
+      todayDistEl = $("todayDist"), todayTimeEl = $("todayTime"),
+      todayIncidentsEl = $("todayIncidents"), todayStopsEl = $("todayStops"),
+      tripListEl = $("tripList"), clearTripsBtn = $("clearTripsBtn");
 
   var running = false;
   var calibrated = false;
@@ -244,11 +341,11 @@
   var buffer = [];            // smoothed accelerationIncludingGravity samples
   var autoAccum = null;       // {x, y, z, since} while a candidate first move builds
   var lastUi = 0;
+  var lastToday = 0;
   var curDecel = 0, curAccel = 0, curTurn = 0;
 
   var brakeCount = 0, accelCount = 0, turnCount = 0;
   var strongest = 0;
-  var startTime = null;
   // Sustained-event tracking, one set per event type.
   var aboveSince = { brake: 0, accel: 0, turn: 0 };  // when the value first went over threshold (0 = below)
   var peak = { brake: 0, accel: 0, turn: 0 };        // strongest value seen during the current over-threshold episode
@@ -256,6 +353,28 @@
   var lastEvent = { brake: 0, accel: 0, turn: 0 };
   var log = [];
   var wakeLock = null;
+
+  // --- trips ---
+  var trips = [];             // saved trip summaries, newest first
+  var tripNum = 0;            // last trip number used (persisted)
+  var currentTripNum = 0;
+  var tripStart = null;
+
+  // --- GPS (speed, compass, distance, stops, direction check) ---
+  var watchId = null;
+  var gpsDenied = false;
+  var lastPos = null;         // {lat, lon, t} of last good fix (for distance)
+  var lastGpsTs = 0;
+  var prevSpeedMph = null;
+  var tripDistM = 0;
+  var topSpeedMph = 0;
+  var movingMs = 0;
+  var stops = 0;
+  var stopCooldownUntil = 0;
+  var speedHist = [];         // {t, mph} over the last few seconds
+  var dirWarned = false;      // direction warning already shown this trip
+  var curSpeedMph = null;
+  var curHeading = null;
 
   // ---------- helpers ----------
   function vecLen(v) { return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); }
@@ -286,6 +405,38 @@
     function p(n) { return (n < 10 ? "0" : "") + n; }
     return h > 0 ? p(h) + ":" + p(m) + ":" + p(sec) : p(m) + ":" + p(sec);
   }
+  function fmtDurMin(ms) {
+    var m = Math.round(ms / 60000);
+    if (m < 60) return m + " min";
+    return Math.floor(m / 60) + "h " + (m % 60) + "m";
+  }
+  function fmtDay(ts) {
+    var d = new Date(ts);
+    return DAYS[d.getDay()] + " " + MONTHS[d.getMonth()] + " " + d.getDate();
+  }
+  function fmtTripDate(ts) {
+    var d = new Date(ts);
+    var h = d.getHours(), m = d.getMinutes();
+    var ap = h >= 12 ? "PM" : "AM";
+    h = h % 12; if (h === 0) h = 12;
+    return fmtDay(ts) + ", " + h + ":" + (m < 10 ? "0" : "") + m + " " + ap;
+  }
+  function todayKey(ts) {
+    var d = new Date(ts);
+    return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate();
+  }
+  function haversine(lat1, lon1, lat2, lon2) {
+    var R = 6371000;
+    function rad(d) { return d * Math.PI / 180; }
+    var a = rad(lat2 - lat1), b = rad(lon2 - lon1);
+    var h = Math.sin(a / 2) * Math.sin(a / 2) +
+      Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(b / 2) * Math.sin(b / 2);
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function cardinal(deg) {
+    var dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+    return dirs[Math.round(deg / 45) % 8];
+  }
 
   // ---------- persistence ----------
   function loadPersisted() {
@@ -300,6 +451,10 @@
       if (m === "auto" || m === "portrait" || m === "landscape") mount = m;
       var l = JSON.parse(localStorage.getItem(LS_LOG) || "[]");
       if (Array.isArray(l)) log = l.slice(0, LOG_MAX);
+      var tl = JSON.parse(localStorage.getItem(LS_TRIPS) || "[]");
+      if (Array.isArray(tl)) trips = tl.slice(0, TRIPS_MAX);
+      var tn = parseInt(localStorage.getItem(LS_TRIPNUM) || "0", 10);
+      if (isFinite(tn) && tn >= 0) tripNum = tn;
     } catch (e) { /* storage unavailable: keep defaults */ }
   }
   function saveThresholds() {
@@ -311,6 +466,7 @@
   }
   function saveLog() { try { localStorage.setItem(LS_LOG, JSON.stringify(log)); } catch (e) {} }
   function saveMount() { try { localStorage.setItem(LS_MOUNT, mount); } catch (e) {} }
+  function saveTrips() { try { localStorage.setItem(LS_TRIPS, JSON.stringify(trips)); } catch (e) {} }
 
   // ---------- direction ----------
   function setForward(f) {
@@ -442,6 +598,172 @@
     updateStats();
   }
 
+  // ---------- GPS: speed, compass, distance, stops, direction check ----------
+  function startGps() {
+    if (watchId != null || gpsDenied) return;
+    if (!("geolocation" in navigator)) return;
+    try {
+      watchId = navigator.geolocation.watchPosition(onGps, onGpsError,
+        { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
+    } catch (e) { watchId = null; }
+  }
+  function stopGps() {
+    if (watchId != null) {
+      try { navigator.geolocation.clearWatch(watchId); } catch (e) {}
+      watchId = null;
+    }
+    curSpeedMph = null;
+    curHeading = null;
+    updateSpeedUi();
+  }
+  function onGpsError(err) {
+    if (err && err.code === 1) {
+      gpsDenied = true;
+      setStatus("Location access denied — speed & compass need it. Trips still record braking.", "warn");
+    }
+    // Other errors (timeout / unavailable): ignore quietly, GPS may recover.
+  }
+  function onGps(pos) {
+    if (!running) return;
+    var c = pos.coords;
+    var now = Date.now();
+    var spd = (c.speed != null && c.speed >= 0) ? c.speed * MPH : null;
+    var hdg = (c.heading != null && !isNaN(c.heading)) ? c.heading : null;
+    var acc = (c.accuracy != null) ? c.accuracy : 9999;
+
+    if (spd != null && spd < 150) {
+      if (lastGpsTs && spd > 2) movingMs += Math.min(now - lastGpsTs, 5000);
+      if (spd > topSpeedMph) topSpeedMph = spd;
+      if (prevSpeedMph != null && prevSpeedMph > STOP_MIN_MPH && spd < STOP_MAX_MPH &&
+          now > stopCooldownUntil) {
+        stops++;
+        stopCooldownUntil = now + STOP_COOLDOWN_MS;
+      }
+      prevSpeedMph = spd;
+      curSpeedMph = spd;
+      speedHist.push({ t: now, mph: spd });
+      while (speedHist.length && now - speedHist[0].t > DIR_WINDOW_MS) speedHist.shift();
+      checkDirection();
+    } else {
+      curSpeedMph = null;
+    }
+    lastGpsTs = now;
+
+    if (hdg != null && spd != null && spd > 2) curHeading = hdg;
+
+    // Distance: only from fixes with decent accuracy, and only sane segments.
+    if (acc <= GPS_MIN_ACC && c.latitude != null) {
+      if (lastPos) {
+        var d = haversine(lastPos.lat, lastPos.lon, c.latitude, c.longitude);
+        var dt = (now - lastPos.t) / 1000;
+        if (d < 500 && dt > 0 && (d / dt) * MPH < 120) tripDistM += d;
+      }
+      lastPos = { lat: c.latitude, lon: c.longitude, t: now };
+    }
+    updateSpeedUi();
+  }
+  // GPS ground truth for the forward axis: if GPS speed is clearly rising while
+  // the meter reads braking (or falling while it reads acceleration), the forward
+  // direction is backwards. Warn once per trip.
+  function checkDirection() {
+    if (!running || !calibrated || !forward || dirWarned) return;
+    if (speedHist.length < 2) return;
+    var oldest = speedHist[0], newest = speedHist[speedHist.length - 1];
+    if (newest.t - oldest.t < 3000) return;
+    if (newest.mph < DIR_MIN_MPH) return;
+    var delta = newest.mph - oldest.mph;
+    var msg = null;
+    if (delta > DIR_DELTA_MPH && curDecel > 0.20) {
+      msg = "GPS says you're speeding up, but the meter reads braking — the direction looks flipped. Tap Flip ↕.";
+    } else if (delta < -DIR_DELTA_MPH && curAccel > 0.20) {
+      msg = "GPS says you're slowing down, but the meter reads acceleration — the direction looks flipped. Tap Flip ↕.";
+    }
+    if (msg) {
+      dirWarned = true;
+      dirWarnEl.textContent = "⚠ " + msg;
+      dirWarnEl.hidden = false;
+    }
+  }
+
+  // ---------- trips ----------
+  function resetTripState() {
+    brakeCount = 0; accelCount = 0; turnCount = 0;
+    strongest = 0;
+    tripStart = null;
+    tripDistM = 0; topSpeedMph = 0; movingMs = 0; stops = 0;
+    stopCooldownUntil = 0; prevSpeedMph = null; lastPos = null; lastGpsTs = 0;
+    speedHist = []; dirWarned = false;
+    dirWarnEl.hidden = true;
+    tripTimeEl.textContent = "00:00";
+    updateStats();
+  }
+  function saveTrip(endTs) {
+    var durMs = endTs - tripStart;
+    var distMi = tripDistM * MI_PER_M;
+    var incidents = brakeCount + accelCount + turnCount;
+    var avg = null;
+    if (movingMs >= 30000) {
+      var hrs = movingMs / 3600000;
+      if (hrs > 0) avg = distMi / hrs;
+    }
+    var summary = {
+      n: currentTripNum, start: tripStart, end: endTs, durMs: durMs,
+      distMi: Math.round(distMi * 10) / 10,
+      topMph: Math.round(topSpeedMph),
+      avgMph: avg != null ? Math.round(avg * 10) / 10 : null,
+      stops: stops, brake: brakeCount, accel: accelCount, turn: turnCount,
+      strongest: Math.round(strongest * 100) / 100
+    };
+    var saved = false;
+    if (durMs >= 30000 || incidents > 0 || distMi >= 0.5) {
+      trips.unshift(summary);
+      if (trips.length > TRIPS_MAX) trips.length = TRIPS_MAX;
+      saveTrips();
+      saved = true;
+    }
+    renderTrips();
+    renderToday();
+    return { summary: summary, saved: saved };
+  }
+  function renderTrips() {
+    if (!trips.length) {
+      tripListEl.innerHTML = '<li class="empty">No trips saved yet</li>';
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < trips.length; i++) {
+      var t = trips[i];
+      var inc = t.brake + t.accel + t.turn;
+      var avg = t.avgMph != null ? " · avg " + Math.round(t.avgMph) + " mph" : "";
+      html += '<li><div><b>Trip ' + t.n + '</b> · ' + fmtTripDate(t.start) + '</div>' +
+        '<div class="trip-sub">' + fmtDurMin(t.durMs) + ' · ' + t.distMi.toFixed(1) + ' mi · top ' +
+        t.topMph + ' mph' + avg + ' · ' + t.stops + ' stop' + (t.stops === 1 ? '' : 's') +
+        ' · ' + inc + ' incident' + (inc === 1 ? '' : 's') +
+        ' — ' + t.brake + ' braking, ' + t.accel + ' accel, ' + t.turn + ' turn' + (t.turn === 1 ? '' : 's') +
+        '</div></li>';
+    }
+    tripListEl.innerHTML = html;
+  }
+  function renderToday() {
+    var key = todayKey(Date.now());
+    var n = 0, dist = 0, ms = 0, inc = 0, st = 0;
+    for (var i = 0; i < trips.length; i++) {
+      var t = trips[i];
+      if (todayKey(t.start) !== key) continue;
+      n++; dist += t.distMi; ms += t.durMs; inc += t.brake + t.accel + t.turn; st += t.stops;
+    }
+    if (running && tripStart != null) {
+      n++; dist += tripDistM * MI_PER_M; ms += Date.now() - tripStart;
+      inc += brakeCount + accelCount + turnCount; st += stops;
+    }
+    todayDateEl.textContent = fmtDay(Date.now());
+    todayTripsEl.textContent = n;
+    todayDistEl.textContent = dist.toFixed(1);
+    todayTimeEl.textContent = fmtTrip(ms);
+    todayIncidentsEl.textContent = inc;
+    todayStopsEl.textContent = st;
+  }
+
   // ---------- events / feedback ----------
   function addEvent(type, g) {
     log.unshift({ t: Date.now(), type: type, g: Math.round(g * 100) / 100 });
@@ -482,6 +804,28 @@
     logListEl.innerHTML = html;
     logCountEl.textContent = "· " + log.length;
   }
+  function updateSpeedUi() {
+    speedValEl.textContent = (curSpeedMph != null) ? String(Math.round(curSpeedMph)) : "—";
+    topSpeedEl.textContent = (topSpeedMph > 0) ? Math.round(topSpeedMph) + " mph" : "—";
+    var avg = null;
+    if (movingMs >= 30000) {
+      var hrs = movingMs / 3600000;
+      if (hrs > 0) avg = (tripDistM * MI_PER_M) / hrs;
+    }
+    avgSpeedEl.textContent = (avg != null && isFinite(avg)) ? Math.round(avg) + " mph" : "—";
+    tripDistEl.textContent = (tripDistM * MI_PER_M).toFixed(1) + " mi";
+    stopCountEl.textContent = stops;
+    if (curHeading != null) {
+      needleEl.style.transform = "rotate(" + curHeading + "deg)";
+      needleEl.style.opacity = "1";
+      compassDirEl.textContent = cardinal(curHeading);
+      compassDegEl.textContent = Math.round(curHeading) + "°";
+    } else {
+      needleEl.style.opacity = "0";
+      compassDirEl.textContent = "—";
+      compassDegEl.textContent = "";
+    }
+  }
   function updateMeter() {
     decelEl.textContent = curDecel.toFixed(2);
     decelEl.className = curDecel > threshBrake ? "over" : "";
@@ -490,12 +834,13 @@
     barEl.className = curDecel > threshBrake ? "over" : (curDecel > threshBrake * 0.7 ? "warn" : "");
     accelEl.textContent = "+" + curAccel.toFixed(2) + " g";
     turnEl.textContent = curTurn.toFixed(2) + " g";
-    if (startTime != null) tripTimeEl.textContent = fmtTrip(Date.now() - startTime);
+    if (tripStart != null) tripTimeEl.textContent = fmtTrip(Date.now() - tripStart);
   }
   function loop() {
     if (!running) return;
     var now = performance.now();
     if (now - lastUi >= 33) { updateMeter(); lastUi = now; }
+    if (now - lastToday >= 1000) { renderToday(); lastToday = now; }
     requestAnimationFrame(loop);
   }
   function syncThresholdUi() {
@@ -519,12 +864,19 @@
     } catch (e) { wakeLock = null; }
   }
   document.addEventListener("visibilitychange", function () {
-    if (running && document.visibilityState === "visible" && !wakeLock) requestWakeLock();
+    if (!running) return;
+    if (document.visibilityState === "visible") {
+      if (!wakeLock) requestWakeLock();
+      if (watchId == null) startGps();
+      setStatus("Back — recording resumed (nothing was recorded while away).", "ok");
+    } else {
+      setStatus("App in background — recording paused. Come back to resume.", "warn");
+    }
   });
 
   // ---------- calibration ----------
   function startCalibrate() {
-    if (!running) { setStatus("Tap Start first, then Calibrate while stopped.", "warn"); return; }
+    if (!running) { setStatus("Tap Start Trip first, then Calibrate while stopped.", "warn"); return; }
     calibrating = true;
     calSamples = [];
     calUntil = Date.now() + 500;
@@ -548,23 +900,30 @@
     resolveDirectionAfterCalibrate();
   }
 
-  // ---------- start / stop ----------
+  // ---------- start / end trip ----------
   function start() {
     if (typeof DeviceMotionEvent === "undefined") {
       setStatus("Motion sensors are not available in this browser.", "warn");
       return;
     }
     function begin() {
+      resetTripState();
+      tripNum++;
+      currentTripNum = tripNum;
+      try { localStorage.setItem(LS_TRIPNUM, String(tripNum)); } catch (e) {}
+      tripStart = Date.now();
       running = true;
-      if (startTime == null) startTime = Date.now();
       window.addEventListener("devicemotion", onMotion);
+      startGps();
       requestWakeLock();
-      startBtn.textContent = "■  Stop";
+      startBtn.innerHTML = "■&nbsp; End Trip";
       startBtn.classList.add("running");
       calBtn.disabled = false;
       flipBtn.disabled = false;
-      setStatus(calibrated ? "Running. Measuring braking." : "Running. Tap Calibrate while stopped.", "ok");
+      setStatus("Trip " + currentTripNum + " started — measuring braking, speed & direction.", "ok");
       lastUi = 0;
+      lastToday = 0;
+      renderToday();
       requestAnimationFrame(loop);
     }
     if (typeof DeviceMotionEvent.requestPermission === "function") {
@@ -580,16 +939,30 @@
     }
   }
   function stop() {
+    var endTs = Date.now();
+    var res = null;
+    if (tripStart != null) res = saveTrip(endTs);
     running = false;
     window.removeEventListener("devicemotion", onMotion);
+    stopGps();
     if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
-    startBtn.innerHTML = "▶&nbsp; Start";
+    startBtn.innerHTML = "▶&nbsp; Start Trip";
     startBtn.classList.remove("running");
     calBtn.disabled = true;
     flipBtn.disabled = true;
     curDecel = 0; curAccel = 0; curTurn = 0;
+    resetTripState();
     updateMeter();
-    setStatus("Stopped. Tap Start to run again.", "");
+    updateSpeedUi();
+    if (res && res.saved) {
+      var s = res.summary;
+      setStatus("Trip " + s.n + " saved — " + (s.brake + s.accel + s.turn) + " incidents · " +
+        s.distMi.toFixed(1) + " mi · top " + s.topMph + " mph · " + s.stops + " stops.", "ok");
+    } else if (res) {
+      setStatus("Trip ended — too short to save.", "");
+    } else {
+      setStatus("Stopped. Tap Start Trip to run again.", "");
+    }
   }
 
   // ---------- wiring ----------
@@ -599,17 +972,18 @@
     if (!forward) { setStatus("No direction set yet — calibrate first.", "warn"); return; }
     forward = [-forward[0], -forward[1], -forward[2]];
     lateral = norm(cross(up, forward));
+    dirWarnEl.hidden = true;
+    dirWarned = false;
     setStatus("Direction flipped.", "ok");
   });
   resetBtn.addEventListener("click", function () {
-    brakeCount = 0; accelCount = 0; turnCount = 0;
-    strongest = 0;
-    startTime = running ? Date.now() : null;
+    resetTripState();
+    if (running) tripStart = Date.now();
     log = [];
     saveLog();
     renderLog();
-    updateStats();
-    tripTimeEl.textContent = "00:00";
+    updateSpeedUi();
+    renderToday();
     setStatus(running ? "Trip reset. Measuring braking." : "Trip reset.", running ? "ok" : "");
   });
   threshBrakeInput.addEventListener("input", function () {
@@ -641,6 +1015,12 @@
     saveMount();
     if (calibrated) resolveDirectionAfterCalibrate();
   });
+  clearTripsBtn.addEventListener("click", function () {
+    trips = [];
+    saveTrips();
+    renderTrips();
+    renderToday();
+  });
 
   // ---------- init ----------
   loadPersisted();
@@ -648,6 +1028,9 @@
   syncThresholdUi();
   renderLog();
   updateStats();
+  renderTrips();
+  renderToday();
+  updateSpeedUi();
 })();
 </script>
 </body>
