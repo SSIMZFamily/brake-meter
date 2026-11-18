@@ -54,6 +54,7 @@
   #startBtn { flex: 2; min-height: 76px; font-size: 26px; background: #30d158; color: #000; }
   #startBtn.running { background: #ff453a; color: #fff; }
   #calBtn, #flipBtn { flex: 1; min-height: 76px; font-size: 18px; }
+  #calBtn.attn:not(:disabled) { background: #0a84ff; }
   #resetBtn { width: 100%; min-height: 56px; font-size: 18px; background: #26262b; }
 
   .dirwarn {
@@ -67,6 +68,8 @@
   #uberResetBtn { min-height: 40px; padding: 0 14px; font-size: 14px; background: #26262b; border-radius: 12px; }
   .settings-note { font-size: 14px; line-height: 1.5; color: #a1a1aa; margin: 0; }
   .settings label { font-size: 17px; font-weight: 600; display: flex; flex-direction: column; gap: 8px; }
+  .settings label.check { flex-direction: row; align-items: center; gap: 12px; }
+  .settings label.check input { width: 24px; height: 24px; accent-color: #30d158; margin: 0; }
   .settings .row { display: flex; justify-content: space-between; align-items: baseline; }
   .tval { color: #30d158; font-variant-numeric: tabular-nums; }
   select {
@@ -132,6 +135,7 @@
   #tripList li:first-child { border-top: none; }
   #tripList li.empty { color: #71717a; text-align: center; }
   #tripList .trip-sub { color: #a1a1aa; font-size: 14px; margin-top: 3px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+  #tripList .rec { color: #ffd60a; font-size: 12px; font-weight: 600; margin-left: 4px; }
 
   .help, .privacy { font-size: 14px; line-height: 1.55; color: #a1a1aa; margin: 0; }
   .help b { color: #f5f5f7; }
@@ -253,10 +257,14 @@
         <option value="landscape">Landscape</option>
       </select>
     </label>
+    <label class="check">
+      <input type="checkbox" id="soundChk">
+      <span>Beep on harsh braking</span>
+    </label>
   </section>
 
-  <p class="help"><b>How to use:</b> mount the phone firmly on the dashboard, screen facing you. Tap Start Trip, allow motion and location access, then tap Calibrate while the car is stopped or cruising steadily. In Auto mode the forward direction is set from your first clear pull-away — if that first move was actually a brake, tap Flip ↕. The app also cross-checks the direction against GPS: if your speed is rising but the meter reads braking, it warns you the direction looks flipped. Tap End Trip when you're done and the trip saves to your history below; the Today card totals the whole day. <b>Background:</b> iPhone stops web apps when you switch to another app, so recording pauses while you're away and resumes when you come back — nothing is recorded in between. Keep the phone charging — GPS uses extra battery. <b>Drive to the Uber standard:</b> brake early and gently, build speed smoothly, and slow down before turns — if this meter stays quiet, Uber’s should too.</p>
-  <p class="privacy">Privacy: everything is measured and stored on this phone only — trips, speed and location never leave the device. No network requests, no accounts, no tracking.</p>
+  <p class="help"><b>How to use:</b> mount the phone firmly on the dashboard, screen facing you. Tap Start Trip, allow motion and location access, then tap Calibrate while the car is stopped or cruising steadily — calibrate again at the start of every trip, and any time you move the phone. In Auto mode the forward direction is set from your first clear pull-away — if that first move was actually a brake, tap Flip ↕. The app also cross-checks the direction against GPS: if your speed is rising but the meter reads braking, it warns you the direction looks flipped. Tap End Trip when you're done and the trip saves to your history below; the Today card totals the whole day. If iPhone closes the app mid-trip, the trip is recovered from the last autosave the next time you open it. <b>Background:</b> iPhone stops web apps when you switch to another app, so recording pauses while you're away and resumes when you come back — nothing is recorded in between. Keep the phone charging — GPS uses extra battery. <b>Drive to the Uber standard:</b> brake early and gently, build speed smoothly, and slow down before turns — if this meter stays quiet, Uber’s should too.</p>
+  <p class="privacy">Privacy: everything is measured and stored on this phone only — trips, speed and location never leave the device. No accounts, no analytics, no tracking. The only network requests are loading this page itself; after the first visit it is cached so it also opens offline.</p>
 </div>
 
 <script>
@@ -270,6 +278,8 @@
   var COOLDOWN_MS = 3000;     // one event per type at most every 3 s
   var SUSTAIN_MS = 600;       // Uber/CMT: an event must last at least 0.6 s to count
   var SMOOTH_N = 9;           // moving-average window (samples, ~150 ms at 60 Hz)
+  var CAL_MAX_RMS = 0.8;      // m/s^2: calibration is rejected if the phone moved more than this
+  var SNAPSHOT_MS = 5000;     // autosave the running trip this often
   var LOG_MAX = 20;
   var TRIPS_MAX = 30;
   var LS_TB = "brakeMeter.threshBrake";
@@ -279,10 +289,13 @@
   var LS_MOUNT = "brakeMeter.mount";
   var LS_TRIPS = "brakeMeter.trips";
   var LS_TRIPNUM = "brakeMeter.tripNum";
+  var LS_ACTIVE = "brakeMeter.active";
+  var LS_SOUND = "brakeMeter.sound";
 
   var MPH = 2.23694;          // m/s -> mph
   var MI_PER_M = 1 / 1609.344;
   var GPS_MIN_ACC = 50;       // metres; ignore fixes worse than this for distance
+  var DIST_MIN_MPH = 1.5;     // below this GPS speed, position changes are drift, not driving
   var STOP_MIN_MPH = 5;       // was moving above this...
   var STOP_MAX_MPH = 1;       // ...then dropped below this = a stop
   var STOP_COOLDOWN_MS = 15000;
@@ -305,7 +318,7 @@
       threshMarkEl = $("threshMark"), accelEl = $("accelVal"), turnEl = $("turnVal"),
       dirEl = $("dirVal"), startBtn = $("startBtn"), calBtn = $("calBtn"),
       flipBtn = $("flipBtn"), resetBtn = $("resetBtn"), mountSel = $("mountSel"),
-      uberResetBtn = $("uberResetBtn"),
+      uberResetBtn = $("uberResetBtn"), soundChk = $("soundChk"),
       threshBrakeInput = $("threshBrake"), threshAccelInput = $("threshAccel"),
       threshTurnInput = $("threshTurn"),
       threshBrakeValEl = $("threshBrakeVal"), threshAccelValEl = $("threshAccelVal"),
@@ -337,11 +350,14 @@
   var threshBrake = UBER_BRAKE;
   var threshAccel = UBER_ACCEL;
   var threshTurn = UBER_TURN;
+  var soundOn = false;
+  var audioCtx = null;
 
   var buffer = [];            // smoothed accelerationIncludingGravity samples
   var autoAccum = null;       // {x, y, z, since} while a candidate first move builds
   var lastUi = 0;
   var lastToday = 0;
+  var lastSnap = 0;
   var curDecel = 0, curAccel = 0, curTurn = 0;
 
   var brakeCount = 0, accelCount = 0, turnCount = 0;
@@ -449,6 +465,7 @@
       if (isFinite(tt) && tt >= 0.10 && tt <= 0.60) threshTurn = tt;
       var m = localStorage.getItem(LS_MOUNT);
       if (m === "auto" || m === "portrait" || m === "landscape") mount = m;
+      soundOn = localStorage.getItem(LS_SOUND) === "1";
       var l = JSON.parse(localStorage.getItem(LS_LOG) || "[]");
       if (Array.isArray(l)) log = l.slice(0, LOG_MAX);
       var tl = JSON.parse(localStorage.getItem(LS_TRIPS) || "[]");
@@ -467,6 +484,7 @@
   function saveLog() { try { localStorage.setItem(LS_LOG, JSON.stringify(log)); } catch (e) {} }
   function saveMount() { try { localStorage.setItem(LS_MOUNT, mount); } catch (e) {} }
   function saveTrips() { try { localStorage.setItem(LS_TRIPS, JSON.stringify(trips)); } catch (e) {} }
+  function saveSound() { try { localStorage.setItem(LS_SOUND, soundOn ? "1" : "0"); } catch (e) {} }
 
   // ---------- direction ----------
   function setForward(f) {
@@ -545,6 +563,11 @@
       armed[type] = true;
     }
   }
+  function resetSustained() {
+    aboveSince.brake = aboveSince.accel = aboveSince.turn = 0;
+    peak.brake = peak.accel = peak.turn = 0;
+    armed.brake = armed.accel = armed.turn = true;
+  }
 
   function processSample(a) {
     // Dynamic acceleration = measured minus calibrated gravity.
@@ -586,6 +609,7 @@
       addEvent("brake", g);
       flash();
       vibrate();
+      beep();
     });
     checkSustained("accel", fG, threshAccel, nowMs, function (g) {
       accelCount++;
@@ -651,12 +675,15 @@
 
     if (hdg != null && spd != null && spd > 2) curHeading = hdg;
 
-    // Distance: only from fixes with decent accuracy, and only sane segments.
+    // Distance: only from fixes with decent accuracy, only sane segments, and only
+    // while actually moving — a parked phone's GPS wanders a few metres every
+    // second, which would otherwise pile up phantom miles at every red light.
     if (acc <= GPS_MIN_ACC && c.latitude != null) {
       if (lastPos) {
         var d = haversine(lastPos.lat, lastPos.lon, c.latitude, c.longitude);
         var dt = (now - lastPos.t) / 1000;
-        if (d < 500 && dt > 0 && (d / dt) * MPH < 120) tripDistM += d;
+        var moving = (spd != null) ? spd > DIST_MIN_MPH : d > acc;
+        if (moving && d < 500 && dt > 0 && (d / dt) * MPH < 120) tripDistM += d;
       }
       lastPos = { lat: c.latitude, lon: c.longitude, t: now };
     }
@@ -693,20 +720,20 @@
     tripDistM = 0; topSpeedMph = 0; movingMs = 0; stops = 0;
     stopCooldownUntil = 0; prevSpeedMph = null; lastPos = null; lastGpsTs = 0;
     speedHist = []; dirWarned = false;
+    resetSustained();
     dirWarnEl.hidden = true;
     tripTimeEl.textContent = "00:00";
     updateStats();
   }
-  function saveTrip(endTs) {
+  function buildSummary(endTs) {
     var durMs = endTs - tripStart;
     var distMi = tripDistM * MI_PER_M;
-    var incidents = brakeCount + accelCount + turnCount;
     var avg = null;
     if (movingMs >= 30000) {
       var hrs = movingMs / 3600000;
       if (hrs > 0) avg = distMi / hrs;
     }
-    var summary = {
+    return {
       n: currentTripNum, start: tripStart, end: endTs, durMs: durMs,
       distMi: Math.round(distMi * 10) / 10,
       topMph: Math.round(topSpeedMph),
@@ -714,17 +741,53 @@
       stops: stops, brake: brakeCount, accel: accelCount, turn: turnCount,
       strongest: Math.round(strongest * 100) / 100
     };
+  }
+  function worthSaving(s) {
+    return s.durMs >= 30000 || (s.brake + s.accel + s.turn) > 0 || s.distMi >= 0.5;
+  }
+  function saveTrip(endTs) {
+    var summary = buildSummary(endTs);
     var saved = false;
-    if (durMs >= 30000 || incidents > 0 || distMi >= 0.5) {
+    if (worthSaving(summary)) {
       trips.unshift(summary);
       if (trips.length > TRIPS_MAX) trips.length = TRIPS_MAX;
       saveTrips();
       saved = true;
     }
+    clearSnapshot();
     renderTrips();
     renderToday();
     return { summary: summary, saved: saved };
   }
+
+  // iOS can kill a web app at any time. The running trip is autosaved every few
+  // seconds so it can be recovered the next time the app opens.
+  function writeSnapshot() {
+    if (!running || tripStart == null) return;
+    try { localStorage.setItem(LS_ACTIVE, JSON.stringify(buildSummary(Date.now()))); } catch (e) {}
+  }
+  function clearSnapshot() {
+    try { localStorage.removeItem(LS_ACTIVE); } catch (e) {}
+  }
+  function recoverSnapshot() {
+    var s = null;
+    try { s = JSON.parse(localStorage.getItem(LS_ACTIVE) || "null"); } catch (e) { s = null; }
+    clearSnapshot();
+    if (!s || typeof s.start !== "number" || typeof s.end !== "number") return null;
+    var clean = {
+      n: parseInt(s.n, 10) || 0, start: s.start, end: s.end,
+      durMs: Math.max(0, +s.durMs || 0), distMi: +s.distMi || 0, topMph: +s.topMph || 0,
+      avgMph: (typeof s.avgMph === "number") ? s.avgMph : null,
+      stops: +s.stops || 0, brake: +s.brake || 0, accel: +s.accel || 0, turn: +s.turn || 0,
+      strongest: +s.strongest || 0, recovered: true
+    };
+    if (!worthSaving(clean)) return null;
+    trips.unshift(clean);
+    if (trips.length > TRIPS_MAX) trips.length = TRIPS_MAX;
+    saveTrips();
+    return clean;
+  }
+
   function renderTrips() {
     if (!trips.length) {
       tripListEl.innerHTML = '<li class="empty">No trips saved yet</li>';
@@ -735,7 +798,8 @@
       var t = trips[i];
       var inc = t.brake + t.accel + t.turn;
       var avg = t.avgMph != null ? " · avg " + Math.round(t.avgMph) + " mph" : "";
-      html += '<li><div><b>Trip ' + t.n + '</b> · ' + fmtTripDate(t.start) + '</div>' +
+      html += '<li><div><b>Trip ' + t.n + '</b> · ' + fmtTripDate(t.start) +
+        (t.recovered ? '<span class="rec">recovered</span>' : '') + '</div>' +
         '<div class="trip-sub">' + fmtDurMin(t.durMs) + ' · ' + t.distMi.toFixed(1) + ' mi · top ' +
         t.topMph + ' mph' + avg + ' · ' + t.stops + ' stop' + (t.stops === 1 ? '' : 's') +
         ' · ' + inc + ' incident' + (inc === 1 ? '' : 's') +
@@ -776,7 +840,32 @@
     setTimeout(function () { flashEl.classList.remove("on"); }, 1000);
   }
   function vibrate() {
+    // iPhone Safari has no vibration API, so this only helps on Android.
     try { if ("vibrate" in navigator) navigator.vibrate(200); } catch (e) {}
+  }
+  // Audio can only start from a tap, so the context is created in unlockAudio()
+  // (called from Start Trip and from the checkbox).
+  function unlockAudio() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!audioCtx) audioCtx = new AC();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+    } catch (e) {}
+  }
+  function beep() {
+    if (!soundOn || !audioCtx) return;
+    try {
+      var o = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      o.type = "sine";
+      o.frequency.value = 880;
+      g.gain.value = 0.2;
+      o.connect(g);
+      g.connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + 0.25);
+    } catch (e) {}
   }
 
   // ---------- UI ----------
@@ -795,9 +884,11 @@
       return;
     }
     var html = "";
+    var todayK = todayKey(Date.now());
     for (var i = 0; i < log.length; i++) {
       var ev = log[i];
-      html += '<li><span class="t">' + fmtClock(ev.t) + '</span>' +
+      var when = (todayKey(ev.t) === todayK ? "" : fmtDay(ev.t) + " ") + fmtClock(ev.t);
+      html += '<li><span class="t">' + when + '</span>' +
         '<span class="' + ev.type + '">' + (labels[ev.type] || ev.type) + '</span>' +
         '<span>' + ev.g.toFixed(2) + ' g</span></li>';
     }
@@ -841,6 +932,7 @@
     var now = performance.now();
     if (now - lastUi >= 33) { updateMeter(); lastUi = now; }
     if (now - lastToday >= 1000) { renderToday(); lastToday = now; }
+    if (now - lastSnap >= SNAPSHOT_MS) { writeSnapshot(); lastSnap = now; }
     requestAnimationFrame(loop);
   }
   function syncThresholdUi() {
@@ -854,25 +946,52 @@
   }
 
   // ---------- wake lock ----------
+  // The browser releases the screen lock whenever the page is hidden, so the
+  // saved sentinel must be cleared on release or it can never be re-acquired.
   function requestWakeLock() {
     try {
       if ("wakeLock" in navigator && navigator.wakeLock.request) {
         navigator.wakeLock.request("screen").then(function (lock) {
+          if (!running) { try { lock.release(); } catch (e) {} return; }
           wakeLock = lock;
+          lock.addEventListener("release", function () {
+            if (wakeLock === lock) wakeLock = null;
+          });
         }).catch(function () { wakeLock = null; });
       }
     } catch (e) { wakeLock = null; }
   }
+  // Drop everything that depends on continuous sensor data, so stale values from
+  // before the app was backgrounded cannot trigger false events, stops or distance.
+  function resetTransientState() {
+    buffer = [];
+    autoAccum = null;
+    resetSustained();
+    curDecel = 0; curAccel = 0; curTurn = 0;
+    speedHist = [];
+    prevSpeedMph = null;
+    lastPos = null;
+    lastGpsTs = 0;
+  }
   document.addEventListener("visibilitychange", function () {
     if (!running) return;
     if (document.visibilityState === "visible") {
+      resetTransientState();
       if (!wakeLock) requestWakeLock();
-      if (watchId == null) startGps();
-      setStatus("Back — recording resumed (nothing was recorded while away).", "ok");
+      if (watchId != null) {
+        try { navigator.geolocation.clearWatch(watchId); } catch (e) {}
+        watchId = null;
+      }
+      startGps();
+      setStatus(calibrated
+        ? "Back — recording resumed (nothing was recorded while away)."
+        : "Back — tap Calibrate while stopped.", calibrated ? "ok" : "warn");
     } else {
+      writeSnapshot();
       setStatus("App in background — recording paused. Come back to resume.", "warn");
     }
   });
+  window.addEventListener("pagehide", writeSnapshot);
 
   // ---------- calibration ----------
   function startCalibrate() {
@@ -888,26 +1007,49 @@
       setStatus("Calibration failed — hold still and try again.", "warn");
       return;
     }
+    var n = calSamples.length;
     var sum = [0, 0, 0];
-    for (var i = 0; i < calSamples.length; i++) {
+    for (var i = 0; i < n; i++) {
       sum[0] += calSamples[i][0]; sum[1] += calSamples[i][1]; sum[2] += calSamples[i][2];
     }
-    g0 = [sum[0] / calSamples.length, sum[1] / calSamples.length, sum[2] / calSamples.length];
+    var mean = [sum[0] / n, sum[1] / n, sum[2] / n];
+    // Reject a calibration taken while the phone was being moved or the car was
+    // braking hard: a bad "gravity" reference would skew every reading afterwards.
+    var sq = 0;
+    for (var j = 0; j < n; j++) {
+      var dx = calSamples[j][0] - mean[0], dy = calSamples[j][1] - mean[1], dz = calSamples[j][2] - mean[2];
+      sq += dx * dx + dy * dy + dz * dz;
+    }
+    if (Math.sqrt(sq / n) > CAL_MAX_RMS) {
+      setStatus("Phone was moving during calibration — hold it steady and try again.", "warn");
+      return;
+    }
+    g0 = mean;
     up = norm(g0);
     calibrated = true;
+    calBtn.classList.remove("attn");
     buffer = [];
     autoAccum = null;
+    resetSustained();
     resolveDirectionAfterCalibrate();
   }
 
   // ---------- start / end trip ----------
   function start() {
+    unlockAudio();
     if (typeof DeviceMotionEvent === "undefined") {
       setStatus("Motion sensors are not available in this browser.", "warn");
       return;
     }
     function begin() {
       resetTripState();
+      // Calibration belongs to one mounting of the phone. Start every trip
+      // uncalibrated rather than silently reusing a stale reference.
+      calibrated = false; calibrating = false;
+      g0 = null; up = [0, 0, 1]; forward = null; lateral = null;
+      buffer = []; autoAccum = null;
+      curDecel = 0; curAccel = 0; curTurn = 0;
+      dirEl.textContent = "—";
       tripNum++;
       currentTripNum = tripNum;
       try { localStorage.setItem(LS_TRIPNUM, String(tripNum)); } catch (e) {}
@@ -919,10 +1061,13 @@
       startBtn.innerHTML = "■&nbsp; End Trip";
       startBtn.classList.add("running");
       calBtn.disabled = false;
+      calBtn.classList.add("attn");
       flipBtn.disabled = false;
-      setStatus("Trip " + currentTripNum + " started — measuring braking, speed & direction.", "ok");
+      setStatus("Trip " + currentTripNum + " started — tap Calibrate while the car is stopped.", "ok");
       lastUi = 0;
       lastToday = 0;
+      lastSnap = performance.now();
+      writeSnapshot();
       renderToday();
       requestAnimationFrame(loop);
     }
@@ -943,12 +1088,14 @@
     var res = null;
     if (tripStart != null) res = saveTrip(endTs);
     running = false;
+    calibrating = false;
     window.removeEventListener("devicemotion", onMotion);
     stopGps();
     if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
     startBtn.innerHTML = "▶&nbsp; Start Trip";
     startBtn.classList.remove("running");
     calBtn.disabled = true;
+    calBtn.classList.remove("attn");
     flipBtn.disabled = true;
     curDecel = 0; curAccel = 0; curTurn = 0;
     resetTripState();
@@ -974,6 +1121,7 @@
     lateral = norm(cross(up, forward));
     dirWarnEl.hidden = true;
     dirWarned = false;
+    resetSustained();
     setStatus("Direction flipped.", "ok");
   });
   resetBtn.addEventListener("click", function () {
@@ -1015,6 +1163,11 @@
     saveMount();
     if (calibrated) resolveDirectionAfterCalibrate();
   });
+  soundChk.addEventListener("change", function () {
+    soundOn = soundChk.checked;
+    saveSound();
+    if (soundOn) { unlockAudio(); beep(); }
+  });
   clearTripsBtn.addEventListener("click", function () {
     trips = [];
     saveTrips();
@@ -1024,13 +1177,26 @@
 
   // ---------- init ----------
   loadPersisted();
+  var recovered = recoverSnapshot();
   mountSel.value = mount;
+  soundChk.checked = soundOn;
   syncThresholdUi();
   renderLog();
   updateStats();
   renderTrips();
   renderToday();
   updateSpeedUi();
+  if (recovered) {
+    setStatus("Trip " + recovered.n + " was recovered from the last autosave (the app was closed mid-trip).", "warn");
+  }
+
+  // Offline support: cache this page after the first visit. Fails silently on
+  // file:// or browsers without service workers; the app works either way.
+  if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
 })();
 </script>
 </body>
